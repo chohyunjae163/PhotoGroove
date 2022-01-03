@@ -1,2 +1,2 @@
 # PhotoGroove
-Elm In Action
+Elm In Action by Richard Feldman
