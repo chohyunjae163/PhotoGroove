@@ -1,11 +1,14 @@
 module PhotoGroove exposing (main)
 
-import Html exposing (..)
-import Html.Attributes exposing(..)
-import Html.Events exposing (onClick)
 import Browser
-import Random
+import Html exposing (..)
+import Html.Attributes exposing(class, classList,id,name,src,title,type_)
+import Html.Events exposing (onClick)
 import Http
+import Json.Decode exposing (Decoder, int, list, string, succeed,map3,field,maybe)
+import Random
+import Maybe exposing (withDefault)
+
 
 urlPrefix : String
 urlPrefix =
@@ -18,7 +21,7 @@ type Msg
     | GotRandomPhoto Photo
     | ClickedSize ThumbnailSize
     | ClickedSurpriseMe
-    | GotPhotos ( Result Http.Error String)
+    | GotPhotos ( Result Http.Error (List Photo))
 
 
 --tranlates the current model into a desired DOM structure
@@ -33,7 +36,7 @@ view model =
             []
             
         Errored errorMessage ->
-            [ text ("Error:" ++ errorMessage)]
+            [ text ("Error: " ++ errorMessage)]
       
 
 viewLoaded : List Photo -> String -> ThumbnailSize -> List (Html Msg)
@@ -58,6 +61,7 @@ viewThumbnail : String -> Photo -> Html Msg
 viewThumbnail selectedUrl thumb =
     img
         [ src (urlPrefix ++ thumb.url)
+        , title ( withDefault "untitled" thumb.title ++ " [" ++ String.fromInt thumb.size ++ " KB]")
         , classList [ ( "selected", selectedUrl == thumb.url ) ]
         , onClick (ClickedPhoto thumb.url)
         ]
@@ -90,7 +94,18 @@ type ThumbnailSize
     | Large
 
 type alias Photo =
-    { url : String }
+    { url : String
+    , size : Int
+    , title : Maybe String
+    }
+
+photoDecoder : Decoder Photo
+photoDecoder =
+    map3
+        (\url size title -> { url = url, size = size, title = title })
+        (field "url" string)
+        (field "size" int)
+        (maybe (field "title" string))
 
 
 type Status
@@ -139,20 +154,20 @@ update msg model =
                 Errored _ ->
                     (model, Cmd.none)
             
-        GotPhotos (Ok responseStr) ->
-            case String.split "," responseStr of
-                (firstUrl :: _) as urls ->
-                    let
-                        photos =
-                            List.map Photo urls
-                    in
-                    ( { model | status = Loaded photos firstUrl }, Cmd.none)
+        GotPhotos (Ok photos) ->
+            case photos of
+                first :: rest ->
+                    ( { model | status = Loaded photos first.url }, Cmd.none)
                 [] ->
                     ( { model | status = Errored "0 photos found" }, Cmd.none)
                 
-        GotPhotos (Err _ ) ->
-                    ( model, Cmd.none)
-
+        GotPhotos (Err httpError ) ->
+            case httpError of
+                Http.BadBody badBody->
+                    ( {model | status = Errored badBody }, Cmd.none)
+                
+                _ ->
+                    ( {model | status = Errored "Server error!" }, Cmd.none)
         
 selectUrl : String -> Status -> Status
 selectUrl url status =
@@ -170,8 +185,8 @@ selectUrl url status =
 initialCmd : Cmd Msg
 initialCmd =
     Http.get
-        { url = "http://elm-in-action.com/photos/list"
-        , expect = Http.expectString GotPhotos
+        { url = "http://elm-in-action.com/photos/list.json"
+        , expect = Http.expectJson GotPhotos (list photoDecoder)
         }
 
 main : Program() Model Msg
