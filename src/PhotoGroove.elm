@@ -25,6 +25,7 @@ type Msg
     | SlidHue Int
     | SlidRipple Int
     | SlidNoise Int
+    | GotActivity String
 
 
 --tranlates the current model into a desired DOM structure
@@ -61,6 +62,7 @@ viewLoaded photos selectedUrl model =
     , button
         [ onClick ClickedSurpriseMe]
         [ text "Surprise Me!"] 
+    , div [ class "activity"] [ text model.activity ]
     , div [ class "filters"]
         [ viewFilter SlidHue "Hue" model.hue
         , viewFilter SlidRipple"Ripple" model.ripple
@@ -112,6 +114,8 @@ type ThumbnailSize
 
 port setFilters : FilterOptions -> Cmd msg
 
+port activityChanges : (String -> msg) -> Sub msg
+
 type alias FilterOptions =
     { url : String
     , filters : List { name : String, amount : Float }
@@ -140,6 +144,7 @@ type Status
 
 type alias Model =
     { status : Status
+    , activity : String
     , chosenSize : ThumbnailSize
     , hue : Int
     , ripple : Int
@@ -149,6 +154,7 @@ type alias Model =
 initialModel : Model
 initialModel =
     { status = Loading
+    , activity = ""
     , chosenSize = Medium    
     , hue = 5
     , ripple = 5
@@ -159,6 +165,9 @@ initialModel =
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
+        GotActivity activity ->
+            ( { model | activity = activity }, Cmd.none )
+
         GotRandomPhoto photo ->
             applyFilters { model | status = selectUrl photo.url model.status}
 
@@ -187,9 +196,19 @@ update msg model =
         GotPhotos (Ok photos) ->
             case photos of
                 first :: rest ->
-                    ( { model | status = Loaded photos first.url }, Cmd.none)
+                    applyFilters
+                        { model
+                            | status =
+                                case List.head photos of
+                                    Just photo ->
+                                        Loaded photos photo.url
+                                        
+                                    Nothing ->
+                                        Loaded [] ""
+                        }
+                
                 [] ->
-                    ( { model | status = Errored "0 photos found" }, Cmd.none)
+                    ({ model | status = Errored "0 photos found!"}, Cmd.none)
                 
         GotPhotos (Err httpError ) ->
             case httpError of
@@ -226,7 +245,7 @@ applyFilters model =
                 url =
                     urlPrefix ++ "large/" ++ selectedUrl
             in
-            ( model, setFilters { url = url, filters = filters} )
+            ( model, setFilters { url = url, filters = filters } )
     
         Loading ->
             (model, Cmd.none)
@@ -255,14 +274,27 @@ initialCmd =
         , expect = Http.expectJson GotPhotos (list photoDecoder)
         }
 
-main : Program() Model Msg
+main : Program Float Model Msg
 main =
     Browser.element
-        { init = \() -> ( initialModel, initialCmd )
+        { init = init
         , view = view
         , update = update
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = subscriptions
         }
+
+init : Float -> (Model, Cmd Msg)
+init flags =
+    let
+        activity =
+            "Initializing Pasta v" ++ String.fromFloat flags
+
+    in
+    ( { initialModel | activity = activity}, initialCmd )
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    activityChanges GotActivity
 
 rangeSlider : List (Attribute msg) -> List (Html msg) -> Html msg
 rangeSlider attributes children =
