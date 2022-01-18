@@ -6,7 +6,7 @@ import Json.Decode as Decode
 import PhotoGroove
 import Test exposing (..)
 import Expect
-import Fuzz exposing (Fuzzer, int, list, string)
+import Fuzz exposing (int, string)
 
 
 decoderTest : Test
