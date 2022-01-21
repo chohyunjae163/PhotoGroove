@@ -1,12 +1,14 @@
 module PhotoFolders exposing (..)
-import Http
-import Json.Decode as Decode exposing (Decoder, int, list, string)
+
+
+import Dict exposing (Dict)
+
+import Json.Decode as Decode exposing (Decoder, int, list, string,map3,field)
 import Browser
 import Html exposing (..)
 import Html.Attributes exposing (class,src)
 import Html.Events exposing (onClick)
-import Dict exposing (Dict)
-import Expect exposing (true)
+import Http
 
 
 type Folder =
@@ -43,74 +45,12 @@ init _ =
 
 modelDecoder : Decoder Model
 modelDecoder =
-    Decode.succeed
-        { selectedPhotoUrl = Just "trevi"
-        , photos = Dict.fromList
-            [ ( "trevi"
-              , { title = "Trevi"
-                , relatedUrls = [ "coli", "fresco"]
-                , size = 34
-                , url = "trevi"
-                }
-              )
-            , ( "fresco"
-              , { title = "fresco"
-                , relatedUrls = [ "trevi" ]
-                , size = 46
-                , url = "fresco"
-                }
-              )
-            , ( "coli"
-              , { title = "Coliseum"
-                , relatedUrls = [ "trevi", "fresco" ]
-                , size = 36
-                , url = "coli"
-                }
-              )
-            ]
-        , root =
-            Folder
-                { name = "Photos", photoUrls = []
-                , subfolders =
-                    [ Folder
-                        { name = "2016", photoUrls = ["trevi", "coli"]
-                        , subfolders =
-                            [ Folder
-                                { name = "outdoors"
-                                , photoUrls = []
-                                , subfolders = []
-                                , expanded = True
-                                }
-                            , Folder
-                                { name = "indoors"
-                                , photoUrls = [ "fresco"]
-                                , subfolders = []
-                                , expanded = True
-                                }
-                            ]
-                        , expanded = True
-                        }
-                    , Folder
-                        { name = "2017"
-                        , photoUrls = []
-                        , subfolders =
-                            [ Folder
-                                { name = "outdoors"
-                                , photoUrls = [], subfolders = []
-                                , expanded = True
-                                }
-                            , Folder
-                                { name = "indoors"
-                                , photoUrls = [], subfolders = []
-                                , expanded = True
-                                }
-                            ]
-                        , expanded = True
-                        }
-                    ]
-                , expanded = True
-                }
-        }
+    Decode.map2
+        (\photos root ->
+            { photos = photos, root = root, selectedPhotoUrl = Nothing}
+        )
+        modelPhotosDecoder
+        folderDecoder
 
 type Msg
     = ClickedPhoto String
@@ -270,3 +210,70 @@ toggleExpanded path (Folder folder) =
             
             in
             Folder { folder | subfolders = subfolders }
+
+
+
+type alias JsonPhoto =
+    { title : String
+    , size : Int
+    , relatedUrls : List String
+    }
+
+jsonPhotoDecoder : Decoder JsonPhoto
+jsonPhotoDecoder =
+    map3 JsonPhoto
+        (field "title" string)
+        (field"size" int)
+        (field "related_photos" (list string))
+
+
+finishPhoto : (String, JsonPhoto) -> (String, Photo )
+finishPhoto ( url, json ) =
+    ( url
+    ,   { url = url
+        , size = json.size
+        , title = json.title
+        , relatedUrls = json.relatedUrls
+        }
+    )
+
+fromPairs : List (String, JsonPhoto) -> Dict String Photo
+fromPairs pairs =
+    pairs
+        |> List.map finishPhoto
+        |> Dict.fromList
+
+photosDecoder : Decoder ( Dict String Photo)
+photosDecoder =
+    Decode.keyValuePairs jsonPhotoDecoder
+    |> Decode.map fromPairs
+
+folderDecoder : Decoder Folder
+folderDecoder =
+    map3 folderFromJson
+        (field "name" string)
+        (field "photos" photosDecoder)
+        (field "subfolders" (Decode.lazy(\_ -> list folderDecoder)))
+
+folderFromJson : String -> Dict String Photo -> List Folder -> Folder
+folderFromJson name photos subfolders =
+    Folder
+        { name = name
+        , expanded = True
+        , subfolders = subfolders
+        , photoUrls = Dict.keys photos
+        }
+
+
+modelPhotosDecoder : Decoder (Dict String Photo)
+modelPhotosDecoder =
+    Decode.map2 modelPhotosFromJson
+        (field "photos" photosDecoder)
+        (field "subfolders" (Decode.lazy (\_ -> list modelPhotosDecoder)))
+
+modelPhotosFromJson :
+    Dict String Photo
+    -> List (Dict String Photo)
+    -> Dict String Photo
+modelPhotosFromJson folderPhotos subfolderPhotos =
+    List.foldl Dict.union folderPhotos subfolderPhotos
