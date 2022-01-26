@@ -1,4 +1,4 @@
-port module PhotoGroove exposing (main, photoDecoder)
+port module PhotoGallery exposing (main, photoDecoder,init, update, Model,view, Msg, subscriptions)
 
 import Browser
 import Html exposing (..)
@@ -58,8 +58,7 @@ viewFilter toMsg name magnitude =
 
 viewLoaded : List Photo -> String -> Model -> List (Html Msg)
 viewLoaded photos selectedUrl model =
-    [ h1 [] [ text "Photo Groove"]
-    , button
+    [ button
         [ onClick ClickedSurpriseMe]
         [ text "Surprise Me!"] 
     , div [ class "activity"] [ text model.activity ]
