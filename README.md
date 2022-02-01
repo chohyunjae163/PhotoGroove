@@ -1,2 +1,2 @@
 # PhotoGroove
-Elm In Action by Richard Feldman
+The Book "Elm In Action" by Richard Feldman
